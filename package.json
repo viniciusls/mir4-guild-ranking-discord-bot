@@ -1,0 +1,29 @@
+{
+  "name": "mir4-guild-ranking-discord-bot",
+  "version": "1.0.0",
+  "description": "A Discord Bot for Mir4 guild members ranking",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "cd ../handler && yarn install;"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/viniciusls/mir4-guild-ranking-discord-bot.git"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "terraform",
+    "discord",
+    "bot",
+    "guild",
+    "ranking"
+  ],
+  "author": "Vinicius Silva <vinicius.ls@live.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/viniciusls/mir4-guild-ranking-discord-bot/issues"
+  },
+  "homepage": "https://github.com/viniciusls/mir4-guild-ranking-discord-bot#readme"
+}
