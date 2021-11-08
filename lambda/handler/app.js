@@ -2,19 +2,21 @@
 // dependencies
 const AWS = require('aws-sdk');
 const crypto = require('crypto');
-const { MongoClient } = require('mongodb');
-const Redis = require('ioredis');
 const util = require('util');
 
-// S3 client setup
-const s3 = new AWS.S3();
+const { MongoDBClient } = require('./mongodb');
+const { RedisClient } = require('./redis');
+const { APIGatewayClient } = require('./api_gateway');
+
+// API Gateway setup
+const apiGateway = new APIGatewayClient();
 
 // mongoDB setup
-const uri = `mongodb://${process.env.MONGODB_USER}:${process.env.MONGODB_PASSWORD}@${process.env.MONGODB_HOST}/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`;
-const mongoClient = new MongoClient(uri);
+const mongoUri = `mongodb://${process.env.MONGODB_USER}:${process.env.MONGODB_PASSWORD}@${process.env.MONGODB_HOST}/${process.env.MONGODB_DATABASE}?retryWrites=true&w=majority`;
+const mongoClient = new MongoDBClient(mongoUri);
 
 // Redis setup
-const redis = new Redis({
+const redisClient = new RedisClient({
   host: process.env.REDIS_HOST, // Redis host
   port: process.env.REDIS_PORT, // Redis port
   username: process.env.REDIS_USER,
@@ -28,15 +30,14 @@ exports.handler = async (event, context, callback) => {
     context.callbackWaitsForEmptyEventLoop = false;
 
     // Read options from the event parameter.
-    console.log('Reading options from event:\n', util.inspect(event, {depth: 5}));
+    console.log('Reading options from event:\n', util.inspect(event, { depth: 5 }));
     const body = JSON.parse(event.body);
 
     const objects = await findObjectsByFilter(body.terms);
-    const response = formatAPIGatewayResponse(objects);
 
-    console.log(response);
+    console.log(objects);
 
-    return callback(null, response);
+    return callback(null, apiGateway.formatAPIGatewayResponse(objects));
   } catch (error) {
     callback(error);
     return false;
@@ -44,101 +45,27 @@ exports.handler = async (event, context, callback) => {
 };
 /*  eslint-enable no-use-before-define */
 
-const formatFiltersForMongoQuery = (terms) => {
-  const filtersForNestedObject = [];
-
-  filtersForNestedObject.push({ imageBucket: process.env.S3_BUCKET_NAME});
-
-  terms.forEach((term) => {
-    filtersForNestedObject.push({ 'analysisResult.name': term.toLowerCase() });
-  });
-
-  return filtersForNestedObject;
-};
-
-const buildRedisKey = (terms) => {
-  return `${process.env.ENVIRONMENT}:${terms.join('-')}`;
-};
-
-const findObjectsFromMongoByFilter = async (terms) => {
-  console.log('Searching on database...');
+const findObjectsByFilter = async (terms) => {
   try {
-    await mongoClient.connect();
-
-    const database = mongoClient.db(process.env.MONGODB_DATABASE);
-    const collection = database.collection(process.env.MONGODB_COLLECTION);
-    const filters = formatFiltersForMongoQuery(terms);
-
-    const results = await collection.find({ $and: filters }).toArray();
-    console.log(results);
-
-    if (redis) {
-      console.log('Building cache with results...');
-      await redis.set(buildRedisKey(terms), JSON.stringify(results));
-    }
-
-    return results;
-  } finally {
-    await mongoClient.close();
-  }
-};
-
-const findObjectsFromRedisByFilter = async(terms) => {
-  return JSON.parse(await redis.get(buildRedisKey(terms)));
-};
-
-const findObjectsByFilter = async(terms) => {
-  try {
-    const objectsFromCache = redis ? await findObjectsFromRedisByFilter(terms) : null;
+    const objectsFromCache = await redisClient.findObjectsFromRedisByFilter(terms);
 
     console.log(`Result from cache: ${objectsFromCache}`);
 
-    return (objectsFromCache && objectsFromCache.length)
-      ? objectsFromCache : await findObjectsFromMongoByFilter(terms);
+    if (objectsFromCache && objectsFromCache.length) {
+      return objectsFromCache;
+    }
+
+    const objectsFromDatabase = await mongoClient.findObjectsFromMongoByFilter(terms);
+
+    if (objectsFromDatabase.length) {
+      await redisClient.saveObject(terms, objectsFromDatabase);
+    }
+
+    return objectsFromDatabase;
   } catch (e) {
     console.error(e);
     console.log('Going to fallback to database...');
 
-    return findObjectsFromMongoByFilter(terms);
+    return mongoClient.findObjectsFromMongoByFilter(terms);
   }
-};
-
-const formatAPIGatewayResponse = (objects) => {
-  return {
-    isBase64Encoded: false,
-    statusCode: 200,
-    body: JSON.stringify(objects),
-  };
-};
-
-const formatRecord = (imageBucket, imageKey, imageHash) => ({
-  imageBucket, imageKey, imageHash, createdAt: new Date().toISOString(),
-});
-
-const saveAnalysisResultToDatabase = async(imageBucket, imageKey, imageHash, analysisResult) => {
-  try {
-    await mongoClient.connect();
-
-    const database = mongoClient.db(process.env.MONGODB_DATABASE);
-    const collection = database.collection(process.env.MONGODB_COLLECTION);
-
-    const recordBody = formatRecord(imageBucket, imageKey, imageHash, analysisResult);
-
-    console.log(recordBody);
-
-    return await collection.insertOne(recordBody);
-  } finally {
-    await mongoClient.close();
-  }
-};
-
-const convertBufferToBase64 = (imageBuffer) => {
-  return imageBuffer.toString('base64');
-};
-
-const getHash = (content) => {
-  const hash = crypto.createHash('sha256');
-  hash.update(content);
-
-  return hash.digest('hex');
 };
