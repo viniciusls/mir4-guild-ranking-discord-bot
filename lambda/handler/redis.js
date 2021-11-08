@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const Redis = require('ioredis');
 
 class RedisClient {

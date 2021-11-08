@@ -1,3 +1,5 @@
+/* eslint-disable no-console */
+
 class APIGatewayClient {
   formatAPIGatewayResponse(objects) {
     return {

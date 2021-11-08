@@ -1,7 +1,5 @@
 /* eslint-disable no-console */
 // dependencies
-const AWS = require('aws-sdk');
-const crypto = require('crypto');
 const util = require('util');
 
 const { MongoDBClient } = require('./mongodb');
