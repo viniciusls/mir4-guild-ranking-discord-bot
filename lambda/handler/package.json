@@ -28,6 +28,6 @@
   "dependencies": {
     "aws-sdk": "^2.1023.0",
     "ioredis": "^4.28.0",
-    "mongodb": "^4.1.4"
+    "mongodb": "^5.0.0"
   }
 }
